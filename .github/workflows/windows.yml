@@ -1,0 +1,46 @@
+name: Build Windows
+
+on: 
+  #push
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  build:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build app for release
+        working-directory: CodeSignCpp
+        run: msbuild /property:Configuration=Release /property:Platform=x64
+
+      - name: Copy EXE
+        run: cp CodeSignCpp/bin/Release-x64/CodeSignCpp.exe CodeSignCpp-unsigned.exe
+
+      - name: Sign files with Trusted Signing
+        uses: azure/trusted-signing-action@v0.5.1
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_SIGNING_CERTIFICATE }}
+          files-folder: ${{ github.workspace }}\CodeSignCpp\bin\Release-x64
+          files-folder-filter: exe,dll
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Move unsigned EXE for archival
+        run: mv CodeSignCpp-unsigned.exe CodeSignCpp/bin/Release-x64/CodeSignCpp-unsigned.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-windows
+          path: CodeSignCpp/bin/Release-x64
